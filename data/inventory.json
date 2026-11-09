@@ -1,0 +1,56 @@
+[
+  {
+    "inv_number": "INV-0001",
+    "equipment_type": "ПК",
+    "name": "Dell OptiPlex 3080",
+    "room": "101",
+    "status": "исправно",
+    "date_added": "2024-09-01",
+    "responsible": "Иванова А.П."
+  },
+  {
+    "inv_number": "INV-0002",
+    "equipment_type": "Монитор",
+    "name": "Samsung S24F350",
+    "room": "101",
+    "status": "исправно",
+    "date_added": "2024-09-01",
+    "responsible": "Иванова А.П."
+  },
+  {
+    "inv_number": "INV-0003",
+    "equipment_type": "Принтер",
+    "name": "HP LaserJet Pro M404",
+    "room": "102",
+    "status": "требует ремонта",
+    "date_added": "2023-02-15",
+    "responsible": "Петров Б.С."
+  },
+  {
+    "inv_number": "INV-0004",
+    "equipment_type": "ПК",
+    "name": "Lenovo ThinkCentre M70",
+    "room": "205",
+    "status": "исправно",
+    "date_added": "2025-01-20",
+    "responsible": "Сидорова В.Н."
+  },
+  {
+    "inv_number": "INV-0005",
+    "equipment_type": "Монитор",
+    "name": "LG 24MK430H",
+    "room": "205",
+    "status": "списано",
+    "date_added": "2022-05-10",
+    "responsible": "Сидорова В.Н."
+  },
+  {
+    "inv_number": "INV-0006",
+    "equipment_type": "Проектор",
+    "name": "Epson EB-X06",
+    "room": "310",
+    "status": "исправно",
+    "date_added": "2024-11-05",
+    "responsible": "Козлов Д.М."
+  }
+]
