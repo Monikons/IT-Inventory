@@ -1,11 +1,7 @@
-#!/usr/bin/env python3
-"""
-Учёт оборудования компьютерных классов колледжа.
-Консольное приложение с текстовым интерфейсом.
-"""
-
 import os
 import sys
+
+from inventory import Inventory, VALID_STATUSES, display_value
 
 # ─── цвета (ANSI) ───
 C_RESET   = "\033[0m"
@@ -26,7 +22,7 @@ STATUS_COLORS = {
     "списано": C_RED,
 }
 
-WIDTH = 78
+WIDTH = 98
 
 
 def clear():
@@ -43,14 +39,21 @@ def header(title: str):
     print()
 
 
+def fit(text, width: int) -> str:
+    """Обрезать текст до ширины колонки (с многоточием), если он длиннее."""
+    text = str(text)
+    return text if len(text) <= width else text[:width - 1] + "…"
+
+
 def show_table(items: list[dict]):
     """Вывести список оборудования в виде таблицы."""
     if not items:
         print(f"{C_YELLOW}  Список пуст.{C_RESET}\n")
         return
 
-    headers = ["Инв. №", "Тип", "Наименование", "Кабинет", "Состояние"]
-    widths = [10, 12, 28, 8, 18]
+    headers = ["Инв. №", "Тип", "Наименование", "Кабинет", "Состояние",
+               "Поступило", "Ответственный"]
+    widths = [9, 9, 24, 8, 15, 10, 15]
 
     # шапка
     header_row = f"  {C_BG_BLUE}{C_BOLD}{C_WHITE}"
@@ -66,11 +69,14 @@ def show_table(items: list[dict]):
         status = it["status"]
         scolor = STATUS_COLORS.get(status, C_WHITE)
         row = "  "
-        row += it["inv_number"].ljust(widths[0]) + " "
-        row += it["equipment_type"].ljust(widths[1]) + " "
-        row += it["name"][:widths[2]-1].ljust(widths[2]) + " "
-        row += it["room"].ljust(widths[3]) + " "
-        row += f"{scolor}{status.ljust(widths[4])}{C_RESET}"
+        row += fit(it["inv_number"], widths[0]).ljust(widths[0]) + " "
+        row += fit(it["equipment_type"], widths[1]).ljust(widths[1]) + " "
+        row += fit(it["name"], widths[2]).ljust(widths[2]) + " "
+        row += fit(it["room"], widths[3]).ljust(widths[3]) + " "
+        row += f"{scolor}{fit(status, widths[4]).ljust(widths[4])}{C_RESET} "
+        # необязательные поля: если не указаны — «неизвестно»
+        row += fit(display_value(it.get("date_added")), widths[5]).ljust(widths[5]) + " "
+        row += fit(display_value(it.get("responsible")), widths[6]).ljust(widths[6])
         print(row)
 
     print(sep)
@@ -87,8 +93,8 @@ def show_card(item: dict):
   {C_CYAN}Наименование:{C_RESET}   {item['name']}
   {C_CYAN}Кабинет:{C_RESET}        {item['room']}
   {C_CYAN}Состояние:{C_RESET}      {scolor}{item['status']}{C_RESET}
-  {C_CYAN}Дата поступления:{C_RESET} {item.get('date_added', '—')}
-  {C_CYAN}Ответственный:{C_RESET}    {item.get('responsible', '—')}
+  {C_CYAN}Дата поступления:{C_RESET} {display_value(item.get('date_added'))}
+  {C_CYAN}Ответственный:{C_RESET}    {display_value(item.get('responsible'))}
   {C_BOLD}{'─' * 40}{C_RESET}
 """)
 
@@ -133,12 +139,10 @@ def action_show_all(inv):
 
 def action_add(inv):
     header("ДОБАВЛЕНИЕ ОБОРУДОВАНИЯ")
-    print(f"  {C_DIM}(пустой ввод в обязательном поле — отмена){C_RESET}\n")
+    print(f"  {C_DIM}Инвентарный номер будет присвоен автоматически: {inv.next_number()}{C_RESET}")
+    print(f"  {C_DIM}Пустой ввод в обязательном поле (*) — отмена.{C_RESET}")
+    print(f"  {C_DIM}Необязательные поля можно пропустить — будет «неизвестно».{C_RESET}\n")
 
-    inv_number = prompt("Инвентарный номер *:")
-    if not inv_number:
-        msg_warn("Отменено.")
-        return
     eq_type = prompt("Тип (ПК / Монитор / Принтер …) *:")
     if not eq_type:
         msg_warn("Отменено.")
@@ -151,23 +155,26 @@ def action_add(inv):
     if not room:
         msg_warn("Отменено.")
         return
-    print(f"  {C_DIM}Состояние: исправно / требует ремонта / списано{C_RESET}")
-    status = prompt("Состояние *:")
-    if not status:
-        msg_warn("Отменено.")
-        return
+    print(f"  {C_DIM}Состояние: {' / '.join(VALID_STATUSES)}{C_RESET}")
+    while True:
+        status = prompt("Состояние *:")
+        if not status:
+            msg_warn("Отменено.")
+            return
+        if status.lower() in VALID_STATUSES:
+            break
+        msg_err("Нет такого состояния, введите одно из списка выше.")
 
     date_added = prompt("Дата поступления (необязательно):")
     responsible = prompt("Ответственное лицо (необязательно):")
 
-    ok, message = inv.add({
-        "inv_number": inv_number,
+    ok, message = inv.create({
         "equipment_type": eq_type,
         "name": name,
         "room": room,
         "status": status,
-        "date_added": date_added or "—",
-        "responsible": responsible or "—",
+        "date_added": date_added,
+        "responsible": responsible,
     })
     if ok:
         msg_ok(message)
@@ -260,8 +267,6 @@ def action_delete(inv):
 # ─── главный цикл ───
 
 def main():
-    from inventory import Inventory
-
     inv = Inventory()
 
     while True:
