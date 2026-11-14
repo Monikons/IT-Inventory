@@ -23,6 +23,7 @@ STATUS_COLORS = {
 }
 
 WIDTH = 98
+UNKNOWN_TEXT = "неизвестно"
 
 
 def clear():
@@ -66,13 +67,13 @@ def show_table(items: list[dict]):
     print(sep)
 
     for it in items:
-        status = it["status"]
+        status = str(it.get("status", UNKNOWN_TEXT))
         scolor = STATUS_COLORS.get(status, C_WHITE)
         row = "  "
-        row += fit(it["inv_number"], widths[0]).ljust(widths[0]) + " "
-        row += fit(it["equipment_type"], widths[1]).ljust(widths[1]) + " "
-        row += fit(it["name"], widths[2]).ljust(widths[2]) + " "
-        row += fit(it["room"], widths[3]).ljust(widths[3]) + " "
+        row += fit(display_value(it.get("inv_number")), widths[0]).ljust(widths[0]) + " "
+        row += fit(display_value(it.get("equipment_type")), widths[1]).ljust(widths[1]) + " "
+        row += fit(display_value(it.get("name")), widths[2]).ljust(widths[2]) + " "
+        row += fit(display_value(it.get("room")), widths[3]).ljust(widths[3]) + " "
         row += f"{scolor}{fit(status, widths[4]).ljust(widths[4])}{C_RESET} "
         # необязательные поля: если не указаны — «неизвестно»
         row += fit(display_value(it.get("date_added")), widths[5]).ljust(widths[5]) + " "
@@ -85,14 +86,15 @@ def show_table(items: list[dict]):
 
 def show_card(item: dict):
     """Карточка одной записи."""
-    scolor = STATUS_COLORS.get(item["status"], C_WHITE)
+    status = display_value(item.get("status"))
+    scolor = STATUS_COLORS.get(status, C_WHITE)
     print(f"""
   {C_BOLD}{'─' * 40}{C_RESET}
-  {C_CYAN}Инв. номер:{C_RESET}     {item['inv_number']}
-  {C_CYAN}Тип:{C_RESET}            {item['equipment_type']}
-  {C_CYAN}Наименование:{C_RESET}   {item['name']}
-  {C_CYAN}Кабинет:{C_RESET}        {item['room']}
-  {C_CYAN}Состояние:{C_RESET}      {scolor}{item['status']}{C_RESET}
+  {C_CYAN}Инв. номер:{C_RESET}     {display_value(item.get('inv_number'))}
+  {C_CYAN}Тип:{C_RESET}            {display_value(item.get('equipment_type'))}
+  {C_CYAN}Наименование:{C_RESET}   {display_value(item.get('name'))}
+  {C_CYAN}Кабинет:{C_RESET}        {display_value(item.get('room'))}
+  {C_CYAN}Состояние:{C_RESET}      {scolor}{status}{C_RESET}
   {C_CYAN}Дата поступления:{C_RESET} {display_value(item.get('date_added'))}
   {C_CYAN}Ответственный:{C_RESET}    {display_value(item.get('responsible'))}
   {C_BOLD}{'─' * 40}{C_RESET}
@@ -104,13 +106,14 @@ def show_menu():
     print(f"""  {C_BOLD}{C_BLUE}┌──────────────────────────────────────────┐{C_RESET}
   {C_BOLD}{C_BLUE}│{C_RESET}  {C_BOLD}МЕНЮ{C_RESET}                                    {C_BOLD}{C_BLUE}│{C_RESET}
   {C_BOLD}{C_BLUE}├──────────────────────────────────────────┤{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}1{C_RESET}  Показать всё оборудование              {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}2{C_RESET}  Добавить оборудование                  {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}3{C_RESET}  Найти по инв. номеру                   {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}4{C_RESET}  Показать кабинет                       {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}5{C_RESET}  Изменить запись                        {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}6{C_RESET}  Удалить запись                         {C_BOLD}{C_BLUE}│{C_RESET}
-  {C_BOLD}{C_BLUE}│{C_RESET}  {C_RED}0{C_RESET}  Выход                                  {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}1{C_RESET}  Показать всё оборудование            {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}2{C_RESET}  Добавить оборудование                {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}3{C_RESET}  Найти по инв. номеру                 {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}4{C_RESET}  Поиск по кабинету                    {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}5{C_RESET}  Изменить запись                      {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}6{C_RESET}  Удалить запись                       {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_GREEN}7{C_RESET}  Поиск по состоянию                   {C_BOLD}{C_BLUE}│{C_RESET}
+  {C_BOLD}{C_BLUE}│{C_RESET}  {C_RED}0{C_RESET}  Выход                                {C_BOLD}{C_BLUE}│{C_RESET}
   {C_BOLD}{C_BLUE}└──────────────────────────────────────────┘{C_RESET}""")
 
 
@@ -208,6 +211,20 @@ def action_room(inv):
         msg_warn(f"В кабинете {room} нет оборудования.")
 
 
+def action_status(inv):
+    header("НАЙТИ ОБОРУДОВАНИЕ ПО СОСТОЯНИЮ")
+    print(f"  {C_DIM}Допустимые значения: {', '.join(VALID_STATUSES)}{C_RESET}")
+    status = prompt("Введите состояние:")
+    if not status:
+        msg_warn("Пустой ввод.")
+        return
+    items = inv.by_status(status)
+    if items:
+        show_table(items)
+    else:
+        msg_warn(f"Нет оборудования с состоянием «{status.strip().lower()}».")
+
+
 def action_update(inv):
     header("ИЗМЕНЕНИЕ ЗАПИСИ")
     num = prompt("Инв. номер записи:")
@@ -268,6 +285,9 @@ def action_delete(inv):
 
 def main():
     inv = Inventory()
+    if inv.load_message:
+        msg_warn(inv.load_message)
+        input(f"\n  {C_DIM}Нажмите Enter, чтобы продолжить…{C_RESET}")
 
     while True:
         clear()
@@ -287,6 +307,8 @@ def main():
             action_update(inv)
         elif choice == "6":
             action_delete(inv)
+        elif choice == "7":
+            action_status(inv)
         elif choice == "0":
             print(f"\n  {C_GREEN}До свидания!{C_RESET}\n")
             sys.exit(0)
