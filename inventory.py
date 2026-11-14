@@ -1,4 +1,7 @@
+import copy
 import json
+import shutil
+from datetime import datetime
 import os
 import re
 
@@ -90,68 +93,148 @@ def validate_item(item: dict) -> tuple[bool, str]:
 # ======================================================================
 
 class Inventory:
-    """Учёт оборудования колледжа. Хранение в JSON-файле."""
+    """Учёт оборудования колледжа. Хранение в JSON-файле (формат версии 2)."""
+
+    FORMAT_VERSION = 2
 
     def __init__(self, filepath: str = DATA_FILE):
         self.filepath = filepath
         self.items: list[dict] = []
+        self.last_number = 0
+        self.load_message: str | None = None   # что сообщить пользователю при старте
         self.load()
 
     # ---------- хранение ----------
     def load(self):
-        """Загрузить данные из JSON. Пустой/отсутствующий файл → пустой список."""
+        """Загрузить данные. Любая проблема с файлом даёт пустой список, а не аварию."""
+        self.items, self.last_number, self.load_message = [], 0, None
         if not os.path.exists(self.filepath):
-            self.items = []
+            self.load_message = ("Файл данных ещё не создан — программа начнёт "
+                                 "с пустого списка.")
             return
         try:
             with open(self.filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.items = data if isinstance(data, list) else []
-        except (json.JSONDecodeError, OSError):
-            print("⚠ Файл данных повреждён или недоступен. Начинаем с пустого списка.")
-            self.items = []
+                text = f.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            self._handle_corrupt(f"не удалось прочитать ({exc})")
+            return
+        if not text.strip():
+            self.load_message = "Файл данных пуст — программа начнёт с пустого списка."
+            return
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            self._handle_corrupt(str(exc))
+            return
+
+        stored_last = 0
+        if isinstance(data, list):                       # старый формат
+            items = data
+        elif isinstance(data, dict) and isinstance(data.get("items"), list):
+            items = data["items"]
+            stored_last = data.get("last_number")
+            stored_last = stored_last if isinstance(stored_last, int) and stored_last > 0 else 0
+        else:
+            self._handle_corrupt("неожиданная структура файла")
+            return
+        self.items = [it for it in items if isinstance(it, dict)]
+        numbers = [parse_inv_number(it.get("inv_number")) for it in self.items]
+        self.last_number = max([stored_last] + [n for n in numbers if n])
+
+    def _handle_corrupt(self, reason: str):
+        """Сохранить копию испорченного файла и продолжить с пустого списка."""
+        try:
+            existing = self._find_same_backup()
+            if existing:       # такая копия уже есть: не плодим новые при каждом запуске
+                saved = f" Исходный файл уже сохранён как «{os.path.basename(existing)}»."
+            else:
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                backup = f"{self.filepath}.corrupt-{stamp}"
+                shutil.copy2(self.filepath, backup)
+                saved = f" Исходный файл сохранён как «{os.path.basename(backup)}»."
+        except OSError:
+            saved = " Резервную копию создать не удалось."
+        self.items, self.last_number = [], 0
+        self.load_message = f"Файл данных повреждён: {reason}.{saved}"
+
+    def _find_same_backup(self) -> str | None:
+        """Путь к уже существующей копии с тем же содержимым, если она есть."""
+        folder = os.path.dirname(self.filepath) or "."
+        prefix = os.path.basename(self.filepath) + ".corrupt-"
+        with open(self.filepath, "rb") as f:
+            content = f.read()
+        for name in sorted(os.listdir(folder)):
+            if name.startswith(prefix):
+                path = os.path.join(folder, name)
+                with open(path, "rb") as f:
+                    if f.read() == content:
+                        return path
+        return None
 
     def save(self):
-        """Сохранить данные в JSON."""
-        os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
-        with open(self.filepath, "w", encoding="utf-8") as f:
-            json.dump(self.items, f, ensure_ascii=False, indent=2)
+        """Атомарная запись: во временный файл, затем os.replace. Ошибка → OSError."""
+        folder = os.path.dirname(self.filepath) or "."
+        os.makedirs(folder, exist_ok=True)
+        payload = {"version": self.FORMAT_VERSION, "last_number": self.last_number,
+                   "items": self.items}
+        tmp = self.filepath + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.filepath)
+        except OSError:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            raise
+
+    def _commit(self, snapshot, ok_message: str) -> tuple[bool, str]:
+        """Сохранить; при ошибке записи вернуть данные в прежнее состояние."""
+        try:
+            self.save()
+        except OSError as exc:
+            self.items, self.last_number = snapshot
+            return False, f"Не удалось сохранить данные ({exc.strerror or exc}). Изменение отменено."
+        return True, ok_message
+
+    def _snapshot(self):
+        return copy.deepcopy(self.items), self.last_number
 
     # ---------- CRUD ----------
     def list_all(self) -> list[dict]:
         return self.items
 
     def find(self, inv_number: str) -> dict | None:
+        """Поиск по номеру без учёта регистра и лишних пробелов."""
+        wanted = str(inv_number or "").strip().upper()
         for it in self.items:
-            if it["inv_number"] == inv_number:
+            if str(it.get("inv_number", "")).strip().upper() == wanted:
                 return it
         return None
 
     def next_number(self) -> str:
-        """Номер, который получит следующая добавленная запись."""
-        return next_inv_number(self.items)
+        """Номер, который получит следующая запись: last_number + 1."""
+        return format_inv_number(max(self.last_number, 0) + 1)
 
     def add(self, item: dict) -> tuple[bool, str]:
-        """Добавить запись с готовым инв. номером. Возвращает (успех, сообщение).
-
-        Проверяет обязательные поля, состояние и уникальность номера.
-        Пустые необязательные поля заполняются значением «неизвестно».
-        """
+        """Добавить запись с готовым инв. номером. Возвращает (успех, сообщение)."""
         item = normalize_item(item)
         ok, message = validate_item(item)
         if not ok:
             return False, message
         if self.find(item["inv_number"]):
             return False, f"Инвентарный номер {item['inv_number']} уже существует."
+        snapshot = self._snapshot()
         self.items.append(item)
-        self.save()
-        return True, "Запись добавлена."
+        number = parse_inv_number(item["inv_number"])
+        if number and number > self.last_number:
+            self.last_number = number
+        return self._commit(snapshot, "Запись добавлена.")
 
     def create(self, fields: dict) -> tuple[bool, str]:
-        """Добавить запись, присвоив ей новый уникальный инв. номер автоматически.
-
-        Номер в fields (если он там есть) игнорируется.
-        """
+        """Добавить запись с автоматическим номером (номер из fields игнорируется)."""
         item = dict(fields)
         item["inv_number"] = self.next_number()
         ok, message = self.add(item)
@@ -164,22 +247,32 @@ class Inventory:
         it = self.find(inv_number)
         if not it:
             return False, "Не найдено"
-        if "status" in changes:
-            if changes["status"] not in VALID_STATUSES:
-                return False, f"Состояние должно быть одним из: {', '.join(VALID_STATUSES)}."
-            it["status"] = changes["status"]
-        if "room" in changes and changes["room"].strip():
-            it["room"] = changes["room"].strip()
-        self.save()
-        return True, "Запись обновлена."
+        new_status = str(changes.get("status") or "").strip().lower()
+        new_room = str(changes.get("room") or "").strip()
+        if not new_status and not new_room:
+            return False, "Ничего не изменено."
+        if new_status and new_status not in VALID_STATUSES:
+            return False, f"Состояние должно быть одним из: {', '.join(VALID_STATUSES)}."
+        snapshot = self._snapshot()
+        if new_status:
+            it["status"] = new_status
+        if new_room:
+            it["room"] = new_room
+        return self._commit(snapshot, "Запись обновлена.")
 
     def delete(self, inv_number: str) -> tuple[bool, str]:
         it = self.find(inv_number)
         if not it:
             return False, "Не найдено"
+        snapshot = self._snapshot()
         self.items.remove(it)
-        self.save()
-        return True, "Запись удалена."
+        return self._commit(snapshot, "Запись удалена.")
 
     def by_room(self, room: str) -> list[dict]:
-        return [it for it in self.items if it["room"] == room]
+        wanted = str(room or "").strip()
+        return [it for it in self.items if str(it.get("room", "")).strip() == wanted]
+
+    def by_status(self, status: str) -> list[dict]:
+        """Фильтр по состоянию. Регистр и пробелы не важны."""
+        wanted = str(status or "").strip().lower()
+        return [it for it in self.items if str(it.get("status", "")).strip().lower() == wanted]
